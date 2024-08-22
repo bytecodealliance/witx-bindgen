@@ -6,9 +6,9 @@ use wit_bindgen_core::{
     abi::{self, AbiVariant, Bindgen, Bitcast, Instruction, LiftLower, WasmType},
     dealias, uwrite, uwriteln,
     wit_parser::{
-        Docs, Enum, Flags, FlagsRepr, Function, FunctionKind, Handle, Int, InterfaceId, Record,
-        Resolve, Result_, SizeAlign, Tuple, Type, TypeDef, TypeDefKind, TypeId, TypeOwner, Variant,
-        WorldId, WorldKey,
+        Alignment, ArchitectureSize, Docs, Enum, Flags, FlagsRepr, Function, FunctionKind, Handle,
+        Int, InterfaceId, Record, Resolve, Result_, SizeAlign, Tuple, Type, TypeDef, TypeDefKind,
+        TypeId, TypeOwner, Variant, WorldId, WorldKey,
     },
     Direction, Files, InterfaceGenerator as _, Ns, Source, WorldGenerator,
 };
@@ -219,8 +219,8 @@ pub struct MoonBit {
     export: HashMap<String, String>,
     export_ns: Ns,
     // return area allocation
-    return_area_size: usize,
-    return_area_align: usize,
+    return_area_size: ArchitectureSize,
+    return_area_align: Alignment,
 }
 
 impl MoonBit {
@@ -2026,8 +2026,8 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 assert!(block_results.is_empty());
 
                 let op = &operands[0];
-                let size = self.gen.gen.sizes.size(element);
-                let align = self.gen.gen.sizes.align(element);
+                let size = self.gen.gen.sizes.size(element).size_wasm32();
+                let align = self.gen.gen.sizes.align(element).align_wasm32();
                 let address = self.locals.tmp("address");
                 let ty = self.gen.type_name(element, true);
                 let index = self.locals.tmp("index");
@@ -2067,7 +2067,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 let length = &operands[1];
                 let array = self.locals.tmp("array");
                 let ty = self.gen.type_name(element, true);
-                let size = self.gen.gen.sizes.size(element);
+                let size = self.gen.gen.sizes.size(element).size_wasm32();
                 // let align = self.gen.gen.sizes.align(element);
                 let index = self.locals.tmp("index");
 
@@ -2364,7 +2364,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 let address = &operands[0];
                 let length = &operands[1];
 
-                let size = self.gen.gen.sizes.size(element);
+                let size = self.gen.gen.sizes.size(element).size_wasm32();
                 // let align = self.gen.gen.sizes.align(element);
 
                 if !body.trim().is_empty() {
@@ -2386,7 +2386,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
         }
     }
 
-    fn return_pointer(&mut self, size: usize, align: usize) -> String {
+    fn return_pointer(&mut self, size: ArchitectureSize, align: Alignment) -> String {
         if self.gen.direction == Direction::Import {
             let ffi_qualifier = self.gen.qualify_package(&FFI_DIR.to_string());
             let address = self.locals.tmp("return_area");
@@ -2394,7 +2394,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
             self.cleanup.push(Cleanup::Memory {
                 address: address.clone(),
                 size: size.to_string(),
-                align,
+                align: align.align_wasm32(),
             });
             address
         } else {

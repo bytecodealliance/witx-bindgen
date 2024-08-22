@@ -21,8 +21,8 @@ pub struct InterfaceGenerator<'a> {
     pub(super) gen: &'a mut RustWasm,
     pub wasm_import_module: Option<&'a str>,
     pub resolve: &'a Resolve,
-    pub return_pointer_area_size: usize,
-    pub return_pointer_area_align: usize,
+    pub return_pointer_area_size: ArchitectureSize,
+    pub return_pointer_area_align: Alignment,
     pub(super) needs_runtime_module: bool,
 }
 
@@ -364,7 +364,7 @@ macro_rules! {macro_name} {{
     }
 
     pub fn finish(&mut self) -> String {
-        if self.return_pointer_area_align > 0 {
+        if self.return_pointer_area_size.size_wasm32() > 0 {
             uwrite!(
                 self.src,
                 "\
@@ -500,7 +500,7 @@ macro_rules! {macro_name} {{
             uwriteln!(self.src, "let mut cleanup_list = {vec}::new();");
         }
         assert!(handle_decls.is_empty());
-        if import_return_pointer_area_size > 0 {
+        if !import_return_pointer_area_size.is_empty() {
             uwrite!(
                 self.src,
                 "\

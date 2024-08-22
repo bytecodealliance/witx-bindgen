@@ -10,9 +10,9 @@ use wit_bindgen_core::{
     abi::{self, AbiVariant, Bindgen, Bitcast, Instruction, LiftLower, WasmType},
     uwrite, uwriteln,
     wit_parser::{
-        Docs, Enum, Flags, FlagsRepr, Function, FunctionKind, Int, InterfaceId, Record, Resolve,
-        Result_, SizeAlign, Tuple, Type, TypeDef, TypeDefKind, TypeId, TypeOwner, Variant, WorldId,
-        WorldKey,
+        Alignment, ArchitectureSize, Docs, Enum, Flags, FlagsRepr, Function, FunctionKind, Int,
+        InterfaceId, Record, Resolve, Result_, SizeAlign, Tuple, Type, TypeDef, TypeDefKind,
+        TypeId, TypeOwner, Variant, WorldId, WorldKey,
     },
     Direction, Files, InterfaceGenerator as _, Ns, Source, WorldGenerator,
 };
@@ -53,8 +53,8 @@ struct InterfaceFragment {
 pub struct TeaVmJava {
     opts: Opts,
     name: String,
-    return_area_size: usize,
-    return_area_align: usize,
+    return_area_size: ArchitectureSize,
+    return_area_align: Alignment,
     tuple_counts: HashSet<usize>,
     needs_cleanup: bool,
     needs_result: bool,
@@ -345,9 +345,9 @@ impl WorldGenerator for TeaVmJava {
             );
         }
 
-        if self.return_area_align > 0 {
-            let size = self.return_area_size;
-            let align = self.return_area_align;
+        if self.return_area_size.size_wasm32() > 0 {
+            let size = self.return_area_size.size_wasm32();
+            let align = self.return_area_align.align_wasm32();
 
             uwriteln!(
                 src,
@@ -1667,8 +1667,8 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 assert!(block_results.is_empty());
 
                 let op = &operands[0];
-                let size = self.gen.gen.sizes.size(element);
-                let align = self.gen.gen.sizes.align(element);
+                let size = self.gen.gen.sizes.size(element).size_wasm32();
+                let align = self.gen.gen.sizes.align(element).align_wasm32();
                 let address = self.locals.tmp("address");
                 let ty = self.gen.type_name(element);
                 let index = self.locals.tmp("index");
@@ -1689,7 +1689,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                     self.cleanup.push(Cleanup {
                         address: address.clone(),
                         size: format!("({op}).size() * {size}"),
-                        align,
+                        align: align,
                     });
                 }
 
@@ -1708,8 +1708,8 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 let length = &operands[1];
                 let array = self.locals.tmp("array");
                 let ty = self.gen.type_name(element);
-                let size = self.gen.gen.sizes.size(element);
-                let align = self.gen.gen.sizes.align(element);
+                let size = self.gen.gen.sizes.size(element).size_wasm32();
+                let align = self.gen.gen.sizes.align(element).align_wasm32();
                 let index = self.locals.tmp("index");
 
                 let result = match &block_results[..] {
@@ -2006,8 +2006,8 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 let address = &operands[0];
                 let length = &operands[1];
 
-                let size = self.gen.gen.sizes.size(element);
-                let align = self.gen.gen.sizes.align(element);
+                let size = self.gen.gen.sizes.size(element).size_wasm32();
+                let align = self.gen.gen.sizes.align(element).align_wasm32();
 
                 if !body.trim().is_empty() {
                     let index = self.locals.tmp("index");
@@ -2031,7 +2031,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
         }
     }
 
-    fn return_pointer(&mut self, size: usize, align: usize) -> String {
+    fn return_pointer(&mut self, size: ArchitectureSize, align: Alignment) -> String {
         self.gen.gen.return_area_size = self.gen.gen.return_area_size.max(size);
         self.gen.gen.return_area_align = self.gen.gen.return_area_align.max(align);
         format!("{}RETURN_AREA", self.gen.gen.qualifier())

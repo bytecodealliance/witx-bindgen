@@ -18,8 +18,8 @@ struct C {
     opts: Opts,
     h_includes: Vec<String>,
     c_includes: Vec<String>,
-    return_pointer_area_size: usize,
-    return_pointer_area_align: usize,
+    return_pointer_area_size: ArchitectureSize,
+    return_pointer_area_align: Alignment,
     names: Ns,
     needs_string: bool,
     needs_union_int32_float: bool,
@@ -463,7 +463,7 @@ impl WorldGenerator for C {
         // Declare a statically-allocated return area, if needed. We only do
         // this for export bindings, because import bindings allocate their
         // return-area on the stack.
-        if self.return_pointer_area_size > 0 {
+        if !self.return_pointer_area_size.is_empty() {
             // Automatic indentation avoided due to `extern "C" {` declaration
             uwrite!(
                 c_str,
@@ -1759,7 +1759,7 @@ impl InterfaceGenerator<'_> {
             ..
         } = f;
 
-        if import_return_pointer_area_size > 0 {
+        if !import_return_pointer_area_size.is_empty() {
             self.src.c_adapters(&format!(
                 "\
                     __attribute__((__aligned__({import_return_pointer_area_align})))
@@ -2115,8 +2115,8 @@ struct FunctionBindgen<'a, 'b> {
     params: Vec<String>,
     wasm_return: Option<String>,
     ret_store_cnt: usize,
-    import_return_pointer_area_size: usize,
-    import_return_pointer_area_align: usize,
+    import_return_pointer_area_size: ArchitectureSize,
+    import_return_pointer_area_align: Alignment,
 
     /// Borrows observed during lifting an export, that will need to be dropped when the guest
     /// function exits.
@@ -2144,8 +2144,8 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
             params: Vec::new(),
             wasm_return: None,
             ret_store_cnt: 0,
-            import_return_pointer_area_size: 0,
-            import_return_pointer_area_align: 0,
+            import_return_pointer_area_size: Default::default(),
+            import_return_pointer_area_align: Default::default(),
             borrow_decls: Default::default(),
             borrows: Vec::new(),
         }
@@ -2158,17 +2158,29 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
         self.src.push_str(";\n");
     }
 
-    fn load(&mut self, ty: &str, offset: i32, operands: &[String], results: &mut Vec<String>) {
+    fn load(
+        &mut self,
+        ty: &str,
+        offset: ArchitectureSize,
+        operands: &[String],
+        results: &mut Vec<String>,
+    ) {
         results.push(format!("*(({}*) ({} + {}))", ty, operands[0], offset));
     }
 
-    fn load_ext(&mut self, ty: &str, offset: i32, operands: &[String], results: &mut Vec<String>) {
+    fn load_ext(
+        &mut self,
+        ty: &str,
+        offset: ArchitectureSize,
+        operands: &[String],
+        results: &mut Vec<String>,
+    ) {
         self.load(ty, offset, operands, results);
         let result = results.pop().unwrap();
         results.push(format!("(int32_t) {}", result));
     }
 
-    fn store(&mut self, ty: &str, offset: i32, operands: &[String]) {
+    fn store(&mut self, ty: &str, offset: ArchitectureSize, operands: &[String]) {
         uwriteln!(
             self.src,
             "*(({}*)({} + {})) = {};",
@@ -2224,7 +2236,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
         self.blocks.push((src.into(), mem::take(operands)));
     }
 
-    fn return_pointer(&mut self, size: usize, align: usize) -> String {
+    fn return_pointer(&mut self, size: ArchitectureSize, align: Alignment) -> String {
         let ptr = self.locals.tmp("ptr");
 
         // Use a stack-based return area for imports, because exports need
@@ -3028,7 +3040,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 uwriteln!(self.src, "uint8_t *{ptr} = {};", operands[0]);
                 let i = self.locals.tmp("i");
                 uwriteln!(self.src, "for (size_t {i} = 0; {i} < {len}; {i}++) {{");
-                let size = self.gen.gen.sizes.size(element);
+                let size = self.gen.gen.sizes.size(element).size_wasm32();
                 uwriteln!(self.src, "uint8_t *base = {ptr} + {i} * {size};");
                 uwriteln!(self.src, "(void) base;");
                 uwrite!(self.src, "{body}");

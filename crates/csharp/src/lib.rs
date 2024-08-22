@@ -22,6 +22,7 @@ use wit_bindgen_core::{
     Files, InterfaceGenerator as _, Ns, WorldGenerator,
 };
 use wit_component::{StringEncoding, WitPrinter};
+use wit_parser::{Alignment, ArchitectureSize};
 mod csproj;
 pub use csproj::CSProject;
 
@@ -133,8 +134,8 @@ pub enum FunctionLevel {
 pub struct CSharp {
     opts: Opts,
     name: String,
-    return_area_size: usize,
-    return_area_align: usize,
+    return_area_size: ArchitectureSize,
+    return_area_align: Alignment,
     tuple_counts: HashSet<usize>,
     needs_result: bool,
     needs_option: bool,
@@ -1957,8 +1958,8 @@ struct FunctionBindgen<'a, 'b> {
     payloads: Vec<String>,
     needs_cleanup_list: bool,
     cleanup: Vec<Cleanup>,
-    import_return_pointer_area_size: usize,
-    import_return_pointer_area_align: usize,
+    import_return_pointer_area_size: ArchitectureSize,
+    import_return_pointer_area_align: Alignment,
     fixed: usize, // Number of `fixed` blocks that need to be closed.
     resource_drops: Vec<(String, String)>,
 }
@@ -1990,8 +1991,8 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
             payloads: Vec::new(),
             needs_cleanup_list: false,
             cleanup: Vec::new(),
-            import_return_pointer_area_size: 0,
-            import_return_pointer_area_align: 0,
+            import_return_pointer_area_size: Default::default(),
+            import_return_pointer_area_align: Default::default(),
             fixed: 0,
             resource_drops: Vec::new(),
         }
@@ -2522,7 +2523,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                         let address = self.locals.tmp("address");
                         let buffer = self.locals.tmp("buffer");
                         let gc_handle = self.locals.tmp("gcHandle");
-                        let size = self.gen.gen.sizes.size(element);
+                        let size = self.gen.gen.sizes.size(element).size_wasm32();
                         uwrite!(
                             self.src,
                             "
@@ -2597,7 +2598,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 assert!(block_results.is_empty());
 
                 let list = &operands[0];
-                let size = self.gen.gen.sizes.size(element);
+                let size = self.gen.gen.sizes.size(element).size_wasm32();
                 let ty = self.gen.type_name_with_qualifier(element, true);
                 let index = self.locals.tmp("index");
 
@@ -2641,7 +2642,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 let length = &operands[1];
                 let array = self.locals.tmp("array");
                 let ty = self.gen.type_name_with_qualifier(element, true);
-                let size = self.gen.gen.sizes.size(element);
+                let size = self.gen.gen.sizes.size(element).size_wasm32();
                 let index = self.locals.tmp("index");
 
                 let result = match &block_results[..] {
@@ -2999,7 +3000,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
         }
     }
 
-    fn return_pointer(&mut self, size: usize, align: usize) -> String {
+    fn return_pointer(&mut self, size: ArchitectureSize, align: Alignment) -> String {
         let ptr = self.locals.tmp("ptr");
 
         // Use a stack-based return area for imports, because exports need
@@ -3096,19 +3097,22 @@ impl Bindgen for FunctionBindgen<'_, '_> {
 
 // We cant use "StructLayout.Pack" as dotnet will use the minimum of the type and the "Pack" field,
 // so for byte it would always use 1 regardless of the "Pack".
-fn dotnet_aligned_array(array_size: usize, required_alignment: usize) -> (usize, String) {
-    match required_alignment {
+fn dotnet_aligned_array(
+    array_size: ArchitectureSize,
+    required_alignment: Alignment,
+) -> (usize, String) {
+    match required_alignment.align_wasm32() {
         1 => {
-            return (array_size, "byte".to_owned());
+            return (array_size.size_wasm32(), "byte".to_owned());
         }
         2 => {
-            return ((array_size + 1) / 2, "ushort".to_owned());
+            return ((array_size.size_wasm32() + 1) / 2, "ushort".to_owned());
         }
         4 => {
-            return ((array_size + 3) / 4, "uint".to_owned());
+            return ((array_size.size_wasm32() + 3) / 4, "uint".to_owned());
         }
         8 => {
-            return ((array_size + 7) / 8, "ulong".to_owned());
+            return ((array_size.size_wasm32() + 7) / 8, "ulong".to_owned());
         }
         _ => todo!("unsupported return_area_align {}", required_alignment),
     }

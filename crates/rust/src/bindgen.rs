@@ -14,8 +14,8 @@ pub(super) struct FunctionBindgen<'a, 'b> {
     tmp: usize,
     pub needs_cleanup_list: bool,
     cleanup: Vec<(String, String)>,
-    pub import_return_pointer_area_size: usize,
-    pub import_return_pointer_area_align: usize,
+    pub import_return_pointer_area_size: ArchitectureSize,
+    pub import_return_pointer_area_align: Alignment,
     pub handle_decls: Vec<String>,
 }
 
@@ -33,8 +33,8 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
             tmp: 0,
             needs_cleanup_list: false,
             cleanup: Vec::new(),
-            import_return_pointer_area_size: 0,
-            import_return_pointer_area_align: 0,
+            import_return_pointer_area_size: Default::default(),
+            import_return_pointer_area_align: Default::default(),
             handle_decls: Vec::new(),
         }
     }
@@ -257,7 +257,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
         }
     }
 
-    fn return_pointer(&mut self, size: usize, align: usize) -> String {
+    fn return_pointer(&mut self, size: ArchitectureSize, align: Alignment) -> String {
         let tmp = self.tmp();
 
         // Imports get a per-function return area to facilitate using the
@@ -715,8 +715,8 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                     operand0 = operands[0]
                 ));
                 self.push_str(&format!("let {len} = {vec}.len();\n"));
-                let size = self.gen.sizes.size(element);
-                let align = self.gen.sizes.align(element);
+                let size = self.gen.sizes.size(element).size_wasm32();
+                let align = self.gen.sizes.align(element).align_wasm32();
                 self.push_str(&format!(
                     "let {layout} = {alloc}::Layout::from_size_align_unchecked({vec}.len() * {size}, {align});\n",
                 ));
@@ -746,8 +746,8 @@ impl Bindgen for FunctionBindgen<'_, '_> {
             Instruction::ListLift { element, .. } => {
                 let body = self.blocks.pop().unwrap();
                 let tmp = self.tmp();
-                let size = self.gen.sizes.size(element);
-                let align = self.gen.sizes.align(element);
+                let size = self.gen.sizes.size(element).size_wasm32();
+                let align = self.gen.sizes.align(element).align_wasm32();
                 let len = format!("len{tmp}");
                 let base = format!("base{tmp}");
                 let result = format!("result{tmp}");
@@ -1038,8 +1038,8 @@ impl Bindgen for FunctionBindgen<'_, '_> {
             Instruction::GuestDeallocateList { element } => {
                 let body = self.blocks.pop().unwrap();
                 let tmp = self.tmp();
-                let size = self.gen.sizes.size(element);
-                let align = self.gen.sizes.align(element);
+                let size = self.gen.sizes.size(element).size_wasm32();
+                let align = self.gen.sizes.align(element).align_wasm32();
                 let len = format!("len{tmp}");
                 let base = format!("base{tmp}");
                 self.push_str(&format!(
