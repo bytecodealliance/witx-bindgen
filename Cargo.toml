@@ -81,7 +81,7 @@ markdown = ['dep:wit-bindgen-markdown']
 teavm-java = ['dep:wit-bindgen-teavm-java']
 go = ['dep:wit-bindgen-go']
 csharp = ['dep:wit-bindgen-csharp']
-csharp-mono = ['csharp']
+csharp-mono = ['dep:wit-bindgen-csharp']
 moonbit = ['dep:wit-bindgen-moonbit']
 
 [dev-dependencies]

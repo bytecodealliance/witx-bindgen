@@ -755,22 +755,6 @@ impl WorldGenerator for CSharp {
         }
 
         if !self.opts.skip_support_files {
-            //TODO: This is currently needed for mono even if it's built as a library.
-            if self.opts.runtime == CSharpRuntime::Mono {
-                files.push(
-                    &format!("MonoEntrypoint.cs",),
-                    indent(&format!(
-                        r#"
-                        {access} class MonoEntrypoint() {{
-                            {access} static void Main() {{
-                            }}
-                        }}
-                        "#
-                    ))
-                    .as_bytes(),
-                );
-            }
-
             // For the time being, we generate both a .wit file and a .o file to
             // represent the component type.  Newer releases of the .NET runtime
             // will be able to use the former, but older ones will need the

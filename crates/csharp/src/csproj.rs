@@ -111,6 +111,7 @@ impl CSProjectLLVMBuilder {
                 <!--To inherit the global NuGet package sources remove the <clear/> line below -->
                 <clear />
                 <add key="nuget" value="https://api.nuget.org/v3/index.json" />
+                <add key="dotnet9" value="https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet9/nuget/v3/index.json" />
                 <add key="dotnet-experimental" value="https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet-experimental/nuget/v3/index.json" />
                 <!--<add key="dotnet-experimental" value="C:\github\runtimelab\artifacts\packages\Debug\Shipping" />-->
               </packageSources>
@@ -163,23 +164,20 @@ impl CSProjectMonoBuilder {
         let camel = format!("{}World", world.to_upper_camel_case());
 
         let aot = self.aot;
-
-        let maybe_aot = match aot {
-            true => format!("<WasmBuildNative>{aot}</WasmBuildNative>"),
-            false => String::new(),
-        };
+        let tfm = "net9.0";
 
         let mut csproj = format!(
-            "<Project Sdk=\"Microsoft.NET.Sdk\">
+            "<Project Sdk=\"Microsoft.NET.Sdk.WebAssembly\">
     
         <PropertyGroup>
-            <TargetFramework>net9.0</TargetFramework>
+            <TargetFramework>{tfm}</TargetFramework>
             <RuntimeIdentifier>wasi-wasm</RuntimeIdentifier>
             <OutputType>Library</OutputType>
-            {maybe_aot}
             <RunAOTCompilation>{aot}</RunAOTCompilation>
             <WasmNativeStrip>false</WasmNativeStrip>
             <WasmSingleFileBundle>true</WasmSingleFileBundle>
+            <WasmGenerateAppBundle>true</WasmGenerateAppBundle>
+            <WasmBuildNative>true</WasmBuildNative>
             <RootNamespace>{name}</RootNamespace>
             <ImplicitUsings>enable</ImplicitUsings>
             <Nullable>enable</Nullable>
@@ -194,9 +192,14 @@ impl CSProjectMonoBuilder {
         </PropertyGroup>
 
         <ItemGroup>
-          <NativeFileReference Include=\"{camel}_component_type.o\" Condition=\"Exists('{camel}_component_type.o')\"/>
+          <_WasiLinkStepArgs Include=\"-Wl,--component-type,{camel}_component_type.wit\" />
         </ItemGroup>
 
+        <Target Name=\"_FixRootAssembly\" AfterTargets=\"PrepareForILLink\">
+            <ItemGroup>
+                <TrimmerRootAssembly Update=\"@(TrimmerRootAssembly)\" Condition=\" '%(RootMode)' == 'EntryPoint' \" RootMode=\"Library\" />
+            </ItemGroup>
+        </Target>
         "
         );
 
