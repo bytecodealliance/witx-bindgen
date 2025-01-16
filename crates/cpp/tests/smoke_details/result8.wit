@@ -1,0 +1,9 @@
+package test:test;
+
+interface a {
+   f: func() -> result<_, u8>;
+}
+
+world result8 {
+   export a;
+}

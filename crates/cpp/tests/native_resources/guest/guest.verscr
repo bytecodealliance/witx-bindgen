@@ -1,0 +1,5 @@
+{
+    global:
+        fooX3AfooX2FresourcesX23*;
+    local: *;
+};

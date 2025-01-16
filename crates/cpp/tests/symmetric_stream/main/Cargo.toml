@@ -1,0 +1,10 @@
+[package]
+name = "main"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+stream = { version = "0.1.0", path = "../stream" }
+symmetric_executor = { version = "0.1.0", path = "../../../../symmetric_executor", features = ["trace"]}
+symmetric_stream = { path = "../../../../symmetric_executor/symmetric_stream" }
+wit-bindgen-symmetric-rt = { version = "0.36.0", path = "../../../../symmetric_executor/rust-client" }

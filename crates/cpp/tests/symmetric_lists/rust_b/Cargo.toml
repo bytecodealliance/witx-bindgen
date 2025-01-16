@@ -1,0 +1,12 @@
+[workspace]
+
+[package]
+name = "rust_b"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+wit-bindgen = { path = "../../../../guest-rust" }
+
+[lib]
+crate-type = ["cdylib"]

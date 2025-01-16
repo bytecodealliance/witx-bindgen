@@ -1,0 +1,9 @@
+[package]
+name = "main"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+async_module = { version = "0.1.0", path = "../async_module" }
+symmetric_executor = { version = "0.1.0", path = "../../../../symmetric_executor", features = ["trace"] }
+wit-bindgen-symmetric-rt = { version = "0.36.0", path = "../../../../symmetric_executor/rust-client" }

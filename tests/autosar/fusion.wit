@@ -1,0 +1,12 @@
+world fusion {
+    import radar
+    export radar-callbacks
+    
+    import core
+    import log
+    import com
+    import exec
+    import wasi:threads/threads
+    import wasi:io/poll
+    export wasi:cli/run
+}

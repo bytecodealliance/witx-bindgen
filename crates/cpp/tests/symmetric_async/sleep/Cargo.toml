@@ -1,0 +1,10 @@
+[package]
+name = "sleep"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+symmetric_executor = { version = "0.1.0", path = "../../../../symmetric_executor" }
+
+[lib]
+crate-type = ["cdylib"]

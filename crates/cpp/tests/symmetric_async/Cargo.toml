@@ -1,0 +1,3 @@
+[workspace]
+members = [ "async_module", "main","sleep"]
+resolver = "2"

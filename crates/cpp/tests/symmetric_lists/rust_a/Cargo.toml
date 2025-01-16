@@ -1,0 +1,10 @@
+[workspace]
+
+[package]
+name = "rust_a"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rust_b = { path = "../rust_b" }
+wit-bindgen = { path = "../../../../guest-rust" }

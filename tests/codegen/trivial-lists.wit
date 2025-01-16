@@ -1,0 +1,13 @@
+package foo:foo;
+
+// a subset of simple-lists
+interface trivial-lists {
+  trivial-list1: func(l: list<u32>);
+  trivial-list2: func() -> list<u32>;
+  trivial-list3: func(a: list<u32>, b: list<u32>) -> list<u32>;
+}
+
+world my-world {
+  import trivial-lists;
+  export trivial-lists;
+}

@@ -13,3 +13,6 @@
 [submodule "tests/codegen/wasi-clocks"]
 	path = tests/codegen/wasi-clocks
 	url = https://github.com/WebAssembly/wasi-clocks
+[submodule "crates/cpp/tests/wasm-micro-runtime"]
+	path = crates/cpp/tests/wasm-micro-runtime
+	url = https://github.com/bytecodealliance/wasm-micro-runtime.git

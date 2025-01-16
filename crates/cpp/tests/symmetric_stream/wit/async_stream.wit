@@ -1,0 +1,14 @@
+package test:test;
+
+interface stream-source {
+    create: func() -> stream<u32>;
+}
+
+interface stream-test {
+    create: func() -> stream<u32>;
+}
+
+world stream-world {
+    import stream-source;
+    export stream-test;
+}

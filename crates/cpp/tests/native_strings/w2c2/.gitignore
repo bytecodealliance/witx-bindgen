@@ -1,0 +1,5 @@
+/libstrings.so
+/*.o
+/w2c2_base.h
+/w2c2_guest.?
+/the-world_bridge.c

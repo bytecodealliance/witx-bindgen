@@ -1,0 +1,15 @@
+[package]
+name = "symmetric_stream"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+symmetric_executor = { path = ".." }
+wit-bindgen-symmetric-rt = { version = "0.36.0", path = "../rust-client" }
+
+[dependencies.wit-bindgen]
+package = "dummy-rt"
+path = "../dummy-rt"
+
+[lib]
+crate-type = ["cdylib"]

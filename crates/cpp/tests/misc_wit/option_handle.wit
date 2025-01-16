@@ -1,0 +1,11 @@
+package test:test;
+
+interface iface {
+    resource r;
+
+    myfunc: func() -> option<r>;
+}
+
+world myworld {
+    import iface;
+}

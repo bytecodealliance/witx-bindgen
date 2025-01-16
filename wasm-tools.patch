@@ -1,0 +1,15 @@
+diff --git a/crates/wit-parser/src/abi.rs b/crates/wit-parser/src/abi.rs
+index 1c383384..e5cbb2c1 100644
+--- a/crates/wit-parser/src/abi.rs
++++ b/crates/wit-parser/src/abi.rs
+@@ -148,6 +148,10 @@ impl Resolve {
+             params.truncate(0);
+             params.push(WasmType::Pointer);
+             indirect_params = true;
++        } else {
++            if matches!((&func.kind,variant), (crate::FunctionKind::Method(_),AbiVariant::GuestExport)) {
++                params.get_mut(0).map(|p| *p=WasmType::Pointer);
++            }
+         }
+ 
+         let mut results = Vec::new();

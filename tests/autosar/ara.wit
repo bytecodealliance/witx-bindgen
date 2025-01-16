@@ -1,0 +1,99 @@
+package autosar:ara
+
+interface types {
+    type error-code-type = s32
+
+    resource error-domain {
+        name: func() -> string
+        message: func(n: error-code-type) -> string
+        // strictly no dtor, because of static lifetime
+    }
+        
+    record error-code {
+        value: error-code-type,
+        domain: s32, // borrow<error-domain>,
+    }
+}
+
+interface e2exf {
+    enum configuration-format { json, xml }
+
+    // status-handler-configure: func(
+    //     binding-configuration: string, binding-format: configuration-format, 
+    //     e2exf-configuration: string, e2exf-format: configuration-format) -> bool
+}
+
+interface core {
+    use types.{error-code}
+    resource instance-specifier {
+//        constructor(spec: string)
+        to-string: func() -> string
+        // needed due to SWS_CM_00118 (by value)
+        clone: func() -> instance-specifier
+        create: static func(spec: string) -> result<instance-specifier, error-code>
+    }
+        
+    initialize: func() -> result<_, error-code>
+    deinitialize: func() -> result<_, error-code>
+
+    create-instance-specifier: func(spec: string) -> result<instance-specifier, error-code>
+//    instance-specifier: func() -> result<instance-specifier, error-code>
+}
+
+interface log {
+    resource logger {
+        report: func(level: u32, message: string)
+        constructor(context: string, description: string, level: u32)
+    }
+    
+//    create: func(context: string, description: string, level: u32) -> logger-handle
+}
+interface com {
+    resource instance-identifier {
+        constructor(id: string)
+        to-string: func() -> string
+    }
+
+    enum s-m-state {
+        valid,
+        no-data,
+        init,
+        invalid,
+        state-m-disabled,
+    }
+
+    enum profile-check-status {
+        ok,
+        repeated,
+        wrong-sequence,
+        error,
+        not-available,
+        check-disabled,
+    }
+    
+    use e2exf.{configuration-format}
+    use core.{instance-specifier}
+
+    // use e2exf.{status-handler-configure} (doesn't work for some reason)
+    status-handler-configure: func(
+        binding-configuration: string, binding-format: configuration-format, 
+        e2exf-configuration: string, e2exf-format: configuration-format) -> bool
+    resolve-instance-ids: func(spec: borrow<instance-specifier>) -> list<instance-identifier>
+}
+interface exec {
+    enum execution-state { running }
+
+    resource execution-client {
+        constructor()
+        report-execution-state: func(state: execution-state)
+    }
+    
+//    create-execution-client: func() -> execution-client
+}
+
+world ara {
+    import core
+    import log
+    import com
+    import exec
+}

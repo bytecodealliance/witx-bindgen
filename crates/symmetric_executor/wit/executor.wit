@@ -1,0 +1,93 @@
+// This interface will only work with symmetric ABI (shared everything),
+// it can't be composed with the canonical ABI
+
+/// Asynchronous executor functionality for symmetric ABI
+interface symmetric-executor {
+    // These pseudo-resources are just used to
+    // pass pointers to register
+
+    /// This wraps a user provided function of type
+    /// `fn (callback-data) -> callback-state`
+    resource callback-function;
+    /// This wraps opaque user data, freed by the callback once
+    /// it returns ready
+    resource callback-data;
+
+    /// The receiving side of an event
+    resource event-subscription {
+        /// Whether the event is active (used by poll implementation)
+        ready: func() -> bool;
+        /// Create a timeout event
+        from-timeout: static func(nanoseconds: u64) -> event-subscription;
+        /// Duplicate the subscription (e.g. for repeated callback registering, same cost as subscribe)
+        dup: func() -> event-subscription;
+        /// Reset subscription to be inactive, only next trigger will ready it
+        reset: func();
+    }
+    /// A user controlled event
+    resource event-generator {
+        constructor();
+        /// Get the receiving side (to pass to other parts of the program)
+        subscribe: func() -> event-subscription;
+        /// Trigger all subscribers
+        activate: func();
+    }
+
+    /// Return value of an async call, lowest bit encoding
+    enum call-status {
+        /// For symmetric this means that processing has started, parameters should still remain valid until null,
+        /// params-read = non-null, results-written,done = null
+        started,
+        /// For symmetric: Retry the call (temporarily out of memory)
+        not-started,
+    }
+
+    /// Return value of an event callback
+    enum callback-state {
+        /// Call the function again
+        pending,
+        /// The function has completed, all results are written, data is freed,
+        /// calling the function again is not permitted as data became invalid!
+        ready,
+    }
+
+    /// Wait until all registered events have completed
+    run: func();
+    /// Register a callback for an event
+    register: func(trigger: event-subscription, callback: callback-function, data: callback-data);
+}
+
+// language neutral stream implementation
+interface symmetric-stream {
+    use symmetric-executor.{event-subscription};
+
+    resource address;
+    // special zero allocation/copy data type (caller provided buffer)
+    resource buffer {
+        constructor(addr: address, capacity: u64);
+        get-address: func () -> address;
+        get-size: func() -> u64;
+        set-size: func(size: u64);
+        capacity: func() -> u64;
+    }
+
+    resource stream-obj {
+        constructor();
+        // create a new instance e.g. for reading or tasks
+        clone: func() -> stream-obj;
+        // reading (in roughly chronological order)
+        is-write-closed: func() -> bool;
+        start-reading: func(buffer: buffer);
+        write-ready-activate: func();
+        read-ready-subscribe: func() -> event-subscription;
+        // none is EOF
+        read-result: func() -> option<buffer>;
+        // writing
+        is-ready-to-write: func() -> bool;
+        write-ready-subscribe: func() -> event-subscription;
+        start-writing: func() -> buffer;
+        // none is EOF
+        finish-writing: func(buffer: option<buffer>);
+        read-ready-activate: func();
+    }
+}

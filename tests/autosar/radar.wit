@@ -1,0 +1,135 @@
+// package autosar:fusion
+
+// TODO figure out whether this is bidirectional
+interface com-add {
+    use com.{instance-identifier}
+    use com.{profile-check-status}
+
+    resource instance-handle {
+        get-instance-id: func() -> instance-identifier
+        clone: func() -> instance-handle
+    }
+
+    resource sample-ptr {
+        get: func() -> s32
+        get-profile-check-status: func() -> profile-check-status
+    }
+
+    resource stream-control {
+        suspend: func()
+        resume: func()
+        abort: static func(self: own<stream-control>)
+    }
+
+    resource abort-handle {
+        abort: static func(self: own<abort-handle>)
+    }
+
+    resource resume-handle {
+        resume: static func(self: own<resume-handle>)
+    }
+}
+
+interface radar-types {
+    record position {
+        x: s32,
+        y: s32,
+        z: s32,
+    }
+    record radar-objects {
+        active: bool,
+        object-vector: list<u8>,
+    }
+    enum fusion-variant {
+        china, usa, europe, russia,
+    }
+
+    record adjust-output {
+        success: bool, 
+        effective-position: position,
+    }
+    record calibrate-output {
+        call-result: bool
+    }
+}
+
+interface radar-consumer {
+    use types.{error-code}
+    use radar-types.{adjust-output, calibrate-output}
+    use com-add.{instance-handle, sample-ptr, resume-handle}
+
+    resource promise-result-adjust-output-error-code {
+        ready: static func(self: own<promise-result-adjust-output-error-code>, value: result<adjust-output, error-code>)
+    }
+    resource promise-result-calibrate-output-error-code {
+        ready: static func(self: own<promise-result-calibrate-output-error-code>, value: result<calibrate-output, error-code>)
+    }
+    resource promise-u32 {
+        ready: static func(self: own<promise-u32>, value: u32)
+    }
+    resource promise-u16 {
+        ready: static func(self: own<promise-u16>, value: u16)
+    }
+
+    resource stream-instance-handle {
+        // returns the value if the queue is filled up (backpressure)
+        ready: func(value: option<own<instance-handle>>, resume: resume-handle) -> option<own<instance-handle>>
+    }
+    resource stream-sample-ptr {
+        ready: func(value: option<own<sample-ptr>>, resume: resume-handle) -> option<own<sample-ptr>>
+    }
+}
+
+interface radar-provider {
+    use types.{error-code}
+    use core.{instance-specifier}
+    use com-add.{instance-handle, stream-control, abort-handle}
+    use radar-consumer.{promise-result-adjust-output-error-code, promise-result-calibrate-output-error-code, stream-instance-handle, stream-sample-ptr, promise-u16, promise-u32}
+    use radar-types.{position, fusion-variant}
+
+    resource instance {
+        constructor(handle: borrow<instance-handle>)
+
+        adjust: func (promise: promise-result-adjust-output-error-code, target-position: position) -> option<abort-handle>
+        calibrate: func (promise: promise-result-calibrate-output-error-code, configuration: string, radar-variant: fusion-variant) -> option<abort-handle>
+        echo: func (text: string)
+    
+        subscribe-brake-event: func (max-sample-count: u32, receiver: stream-sample-ptr) -> result<stream-control, error-code>
+        subscribe-parking-brake-event: func (max-sample-count: u32, receiver: stream-sample-ptr) -> result<stream-control, error-code>
+    
+        // field
+        get-update-rate: func(promise: promise-u32) -> option<abort-handle>
+        set-update-rate: func(promise: promise-u32, value: u32) -> option<abort-handle>
+        subscribe-update-rate: func(max-sample-count: u32, receiver: stream-sample-ptr) -> result<stream-control, error-code>
+        subscribe-front-object-distance: func(max-sample-count: u32, receiver: stream-sample-ptr) -> result<stream-control, error-code>
+        get-rear-object-distance: func(promise: promise-u16) -> option<abort-handle>
+        set-object-detection-limit: func(promise: promise-u16, value: u16) -> option<abort-handle>
+    }
+
+    start-find-service: func(spec: borrow<instance-specifier>, receiver: stream-instance-handle) -> option<stream-control>
+}
+
+// interface service {
+//     use radar.{instance}
+//     use core.{instance-specifier}
+//     use com-add.{abort-handle}
+//     enum method-call-processing-mode {
+//         poll, event, event-single-thread,
+//     }
+//     // perhaps use own here?
+//     offer-service: func(service: borrow<instance>, spec: borrow<instance-specifier>, mode: method-call-processing-mode) -> abort-handle
+//     //stop-offer-service: func (service: borrow<instance>)
+// }
+
+world radar-world {
+    export radar-provider
+    import radar-consumer
+
+    import core
+    import log
+    import com
+    import exec
+    // import service
+    import wasi:threads/threads
+    export wasi:cli/run
+}

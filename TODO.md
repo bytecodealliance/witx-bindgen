@@ -58,3 +58,8 @@
 
 * Imported handle types show up as `any` in TS, unsure how to plumb through
   actual types to get that actually typed.
+
+# Cpp
+
+* Nested lists
+* Host: Strings inside records

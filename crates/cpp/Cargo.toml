@@ -1,0 +1,30 @@
+[package]
+name = "wit-bindgen-cpp"
+authors = ["Christof Petig <christof.petig@arcor.de>"]
+version = "0.3.0"
+edition.workspace = true
+repository = 'https://github.com/cpetig/wit-bindgen'
+license = "Apache-2.0 WITH LLVM-exception"
+description = """
+C++ guest and host binding generator for WIT and the component model.
+"""
+
+[lib]
+doctest = false
+test = false
+
+[dependencies]
+wit-bindgen-core = { workspace = true }
+wit-component = { workspace = true }
+wasm-encoder = { workspace = true }
+wasm-metadata = { workspace = true }
+wit-bindgen-c = { workspace = true }
+anyhow = { workspace = true }
+heck = { workspace = true }
+clap = { workspace = true, optional = true }
+# for now 
+#wit-bindgen-rust = { workspace = true }
+#wit-bindgen-cpp-host = { workspace = true }
+
+[dev-dependencies]
+test-helpers = { path = '../test-helpers' }

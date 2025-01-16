@@ -1,0 +1,14 @@
+package test:test;
+
+interface string-delay {
+    forward: func(s: string) -> string;
+}
+
+interface wait {
+    sleep: func(nanoseconds: u64);
+}
+
+world async-module {
+    import wait;
+    export string-delay;
+}

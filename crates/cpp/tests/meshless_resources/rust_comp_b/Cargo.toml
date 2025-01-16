@@ -1,0 +1,13 @@
+[workspace]
+
+[package]
+name = "rust_comp_b"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "rust_comp_b"
+crate-type = ["cdylib"]
+#crate-type = ["staticlib", "rlib"]
+
+[dependencies]

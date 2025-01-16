@@ -123,6 +123,7 @@ fn tests(name: &str, dir_name: &str) -> Result<Vec<PathBuf>> {
     let mut java = Vec::new();
     let mut go = Vec::new();
     let mut c_sharp: Vec<PathBuf> = Vec::new();
+    let mut cpp = Vec::new();
     for file in dir.read_dir()? {
         let path = file?.path();
         match path.extension().and_then(|s| s.to_str()) {
@@ -131,6 +132,7 @@ fn tests(name: &str, dir_name: &str) -> Result<Vec<PathBuf>> {
             Some("rs") => rust.push(path),
             Some("go") => go.push(path),
             Some("cs") => c_sharp.push(path),
+            Some("cpp") => cpp.push(path),
             _ => {}
         }
     }
@@ -262,6 +264,100 @@ fn tests(name: &str, dir_name: &str) -> Result<Vec<PathBuf>> {
 
                 result.push(component_path);
             }
+        }
+    }
+
+    #[cfg(feature = "cpp")]
+    if !cpp.is_empty() {
+        let (resolve, world) = resolve_wit_dir(&dir);
+        for path in cpp.iter() {
+            let world_name = &resolve.worlds[world].name;
+            let out_dir = out_dir.join(format!(
+                "cpp-{}",
+                path.file_name()
+                    .and_then(|os| os.to_str())
+                    .unwrap_or(world_name)
+            ));
+            drop(fs::remove_dir_all(&out_dir));
+            fs::create_dir_all(&out_dir).unwrap();
+
+            let snake = world_name.replace("-", "_");
+            let mut files = Default::default();
+            let mut opts = wit_bindgen_cpp::Opts::default();
+            if let Some(path) = path.file_name().and_then(|s| s.to_str()) {
+                if path.contains(".new.") {
+                    opts.new_api = true;
+                }
+            }
+            opts.build().generate(&resolve, world, &mut files).unwrap();
+
+            for (file, contents) in files.iter() {
+                let dst = out_dir.join(file);
+                fs::write(dst, contents).unwrap();
+            }
+
+            let sdk = PathBuf::from(std::env::var_os("WASI_SDK_PATH").expect(
+                "point the `WASI_SDK_PATH` environment variable to the path of your wasi-sdk",
+            ));
+            // Test both C mode and C++ mode.
+            let compiler = "bin/clang++";
+            let mut cmd = Command::new(sdk.join(compiler));
+            let out_wasm = out_dir.join(format!(
+                "cpp-{}.wasm",
+                path.file_stem().and_then(|s| s.to_str()).unwrap()
+            ));
+            cmd.arg("--sysroot").arg(sdk.join("share/wasi-sysroot"));
+            cmd.arg(path)
+                .arg(out_dir.join(format!("{snake}.cpp")))
+                .arg(out_dir.join(format!("{snake}_component_type.o")))
+                .arg("-I")
+                .arg(&out_dir)
+                .arg("-I")
+                //                .arg(&(String::from(env!("CARGO_MANIFEST_DIR")) + "/crates/cpp/helper-types"))
+                .arg(&(String::from(env!("CARGO_MANIFEST_DIR")) + "/crates/cpp/test_headers"))
+                .arg("-Wall")
+                .arg("-Wextra")
+                //                .arg("-Werror")
+                .arg("-Wno-unused-parameter")
+                .arg("-mexec-model=reactor")
+                // for now avoid exceptions on allocation failures
+                .arg("-fno-exceptions")
+                .arg("-std=c++17")
+                .arg("-g")
+                .arg("-o")
+                .arg(&out_wasm);
+            println!("{:?}", cmd);
+            let output = match cmd.output() {
+                Ok(output) => output,
+                Err(e) => panic!("failed to spawn compiler: {}", e),
+            };
+
+            if !output.status.success() {
+                println!("status: {}", output.status);
+                println!("stdout: ------------------------------------------");
+                println!("{}", String::from_utf8_lossy(&output.stdout));
+                println!("stderr: ------------------------------------------");
+                println!("{}", String::from_utf8_lossy(&output.stderr));
+                panic!("failed to compile");
+            }
+
+            // Translate the canonical ABI module into a component.
+            let module = fs::read(&out_wasm).expect("failed to read wasm file");
+            let component = ComponentEncoder::default()
+                .module(module.as_slice())
+                .expect("pull custom sections from module")
+                .validate(true)
+                .adapter("wasi_snapshot_preview1", &wasi_adapter)
+                .expect("adapter failed to get loaded")
+                .encode()
+                .expect(&format!(
+                    "module {:?} can be translated to a component",
+                    out_wasm
+                ));
+            let component_path = out_wasm.with_extension("component.wasm");
+            fs::write(&component_path, component).expect("write component to disk");
+
+            result.push(component_path);
         }
     }
 

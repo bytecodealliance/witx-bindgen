@@ -384,6 +384,17 @@ Then, you can generate the bindings for your project:
 wit-bindgen-go generate <path-to-wit-pkg>
 ```
 
+### Guest: C++-17+
+
+This fork contains code to generate C++ code which uses the std types 
+optional, string, string_view, vector, expected to represent generic
+WIT types.
+
+This relies on wasi-SDK for guest compilation.
+
+A separate subcommand (cpp-host) will generate C++ host code for 
+WebAssembly micro runtime.
+
 ### Guest: MoonBit
 
 MoonBit can be compiled to WebAssembly using [its toolchain](https://moonbitlang.com/download):
@@ -475,6 +486,8 @@ components:
   that works similar to the JS integration. Given a concrete component this will
   generate Python source code to interact with the component using an embedding
   of Wasmtime for its core WebAssembly support.
+
+- C++-17+: see above chapter for WAMR host code generation.
 
 - Tooling: the [`wasm-tools`] project can be used to inspect and modify
   low-level details of components. For example as previously mentioned you can

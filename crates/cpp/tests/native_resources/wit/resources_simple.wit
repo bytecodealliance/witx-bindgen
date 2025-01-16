@@ -1,0 +1,16 @@
+package foo:foo;
+
+interface resources {
+    resource r {
+        constructor(a: u32);
+        add: func(b: u32);
+    }
+    create: func() -> r;
+    borrows: func(o: borrow<r>);
+    consume: func(o: r);
+}
+
+world the-world {
+  import resources;
+  export resources;
+}

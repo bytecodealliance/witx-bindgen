@@ -12,6 +12,7 @@ mod types;
 pub use types::{TypeInfo, Types};
 mod path;
 pub use path::name_package_module;
+pub mod symmetric;
 
 #[derive(Default, Copy, Clone, PartialEq, Eq, Debug)]
 pub enum Direction {
@@ -20,8 +21,241 @@ pub enum Direction {
     Export,
 }
 
+// #[derive(Default)]
+// pub struct Types {
+//     type_info: HashMap<TypeId, TypeInfo>,
+// }
+
+// #[derive(Default, Clone, Copy, Debug)]
+// pub struct TypeInfo {
+//     /// Whether or not this type is ever used (transitively) within the
+//     /// parameter of an imported function.
+//     ///
+//     /// This means that it's used in a context where ownership isn't
+//     /// relinquished.
+//     pub borrowed: bool,
+
+//     /// Whether or not this type is ever used (transitively) within the
+//     /// parameter or result of an export, or the result of an import.
+//     ///
+//     /// This means that it's used in a context where ownership is required and
+//     /// memory management is necessary.
+//     pub owned: bool,
+
+//     /// Whether or not this type is ever used (transitively) within the
+//     /// error case in the result of a function.
+//     pub error: bool,
+
+//     /// Whether or not this type (transitively) has a list (or string).
+//     pub has_list: bool,
+
+//     /// Whether or not this type (transitively) has a resource (or handle).
+//     pub has_resource: bool,
+
+//     /// Whether or not this type (transitively) has a borrow handle.
+//     pub has_borrow_handle: bool,
+
+//     /// Whether or not this type (transitively) has an own handle.
+//     pub has_own_handle: bool,
+// }
+
+// impl std::ops::BitOrAssign for TypeInfo {
+//     fn bitor_assign(&mut self, rhs: Self) {
+//         self.borrowed |= rhs.borrowed;
+//         self.owned |= rhs.owned;
+//         self.error |= rhs.error;
+//         self.has_list |= rhs.has_list;
+//         self.has_resource |= rhs.has_resource;
+//         self.has_borrow_handle |= rhs.has_borrow_handle;
+//         self.has_own_handle |= rhs.has_own_handle;
+//     }
+// }
+
+// impl TypeInfo {
+//     pub fn is_clone(&self) -> bool {
+//         !self.has_resource
+//     }
+//     pub fn is_copy(&self) -> bool {
+//         !self.has_list && !self.has_resource
+//     }
+// }
+
+// impl Types {
+//     pub fn analyze(&mut self, resolve: &Resolve) {
+//         for (t, _) in resolve.types.iter() {
+//             self.type_id_info(resolve, t);
+//         }
+//         for (_, world) in resolve.worlds.iter() {
+//             for (import, (_, item)) in world
+//                 .imports
+//                 .iter()
+//                 .map(|i| (true, i))
+//                 .chain(world.exports.iter().map(|i| (false, i)))
+//             {
+//                 match item {
+//                     WorldItem::Function(f) => {
+//                         self.type_info_func(resolve, f, import);
+//                     }
+//                     WorldItem::Interface(id) => {
+//                         for (_, f) in resolve.interfaces[*id].functions.iter() {
+//                             self.type_info_func(resolve, f, import);
+//                         }
+//                     }
+//                     WorldItem::Type(_) => {}
+//                 }
+//             }
+//         }
+//     }
+
+//     fn type_info_func(&mut self, resolve: &Resolve, func: &Function, import: bool) {
+//         let mut live = LiveTypes::default();
+//         for (_, ty) in func.params.iter() {
+//             self.type_info(resolve, ty);
+//             live.add_type(resolve, ty);
+//         }
+//         for id in live.iter() {
+//             if resolve.types[id].name.is_some() {
+//                 let info = self.type_info.get_mut(&id).unwrap();
+//                 if import {
+//                     info.borrowed = true;
+//                 } else {
+//                     info.owned = true;
+//                 }
+//             }
+//         }
+//         let mut live = LiveTypes::default();
+//         for ty in func.results.iter_types() {
+//             self.type_info(resolve, ty);
+//             live.add_type(resolve, ty);
+//         }
+//         for id in live.iter() {
+//             if resolve.types[id].name.is_some() {
+//                 self.type_info.get_mut(&id).unwrap().owned = true;
+//             }
+//         }
+
+//         for ty in func.results.iter_types() {
+//             let id = match ty {
+//                 Type::Id(id) => *id,
+//                 _ => continue,
+//             };
+//             let err = match &resolve.types[id].kind {
+//                 TypeDefKind::Result(Result_ { err, .. }) => err,
+//                 _ => continue,
+//             };
+//             if let Some(Type::Id(id)) = err {
+//                 // When an interface `use`s a type from another interface, it creates a new typeid
+//                 // referring to the definition typeid. Chase any chain of references down to the
+//                 // typeid of the definition.
+//                 fn resolve_type_definition_id(resolve: &Resolve, mut id: TypeId) -> TypeId {
+//                     loop {
+//                         match resolve.types[id].kind {
+//                             TypeDefKind::Type(Type::Id(def_id)) => id = def_id,
+//                             _ => return id,
+//                         }
+//                     }
+//                 }
+//                 let id = resolve_type_definition_id(resolve, *id);
+//                 self.type_info.get_mut(&id).unwrap().error = true;
+//             }
+//         }
+//     }
+
+//     pub fn get(&self, id: TypeId) -> TypeInfo {
+//         self.type_info[&id]
+//     }
+
+//     pub fn type_id_info(&mut self, resolve: &Resolve, ty: TypeId) -> TypeInfo {
+//         if let Some(info) = self.type_info.get(&ty) {
+//             return *info;
+//         }
+//         let mut info = TypeInfo::default();
+//         match &resolve.types[ty].kind {
+//             TypeDefKind::Record(r) => {
+//                 for field in r.fields.iter() {
+//                     info |= self.type_info(resolve, &field.ty);
+//                 }
+//             }
+//             TypeDefKind::Resource => {
+//                 info.has_resource = true;
+//             }
+//             TypeDefKind::Handle(handle) => {
+//                 match handle {
+//                     Handle::Borrow(_) => info.has_borrow_handle = true,
+//                     Handle::Own(_) => info.has_own_handle = true,
+//                 }
+//                 info.has_resource = true;
+//             }
+//             TypeDefKind::Tuple(t) => {
+//                 for ty in t.types.iter() {
+//                     info |= self.type_info(resolve, ty);
+//                 }
+//             }
+//             TypeDefKind::Flags(_) => {}
+//             TypeDefKind::Enum(_) => {}
+//             TypeDefKind::Variant(v) => {
+//                 for case in v.cases.iter() {
+//                     info |= self.optional_type_info(resolve, case.ty.as_ref());
+//                 }
+//             }
+//             TypeDefKind::List(ty) => {
+//                 info = self.type_info(resolve, ty);
+//                 info.has_list = true;
+//             }
+//             TypeDefKind::Type(ty) => {
+//                 info = self.type_info(resolve, ty);
+//             }
+//             TypeDefKind::Option(ty) => {
+//                 info = self.type_info(resolve, ty);
+//             }
+//             TypeDefKind::Result(r) => {
+//                 info = self.optional_type_info(resolve, r.ok.as_ref());
+//                 info |= self.optional_type_info(resolve, r.err.as_ref());
+//             }
+//             TypeDefKind::Future(_) | TypeDefKind::Stream(_) | TypeDefKind::Error => {}
+//             TypeDefKind::Unknown => unreachable!(),
+//         }
+//         let prev = self.type_info.insert(ty, info);
+//         assert!(prev.is_none());
+//         info
+//     }
+
+//     pub fn type_info(&mut self, resolve: &Resolve, ty: &Type) -> TypeInfo {
+//         let mut info = TypeInfo::default();
+//         match ty {
+//             Type::String => info.has_list = true,
+//             Type::Id(id) => return self.type_id_info(resolve, *id),
+//             _ => {}
+//         }
+//         info
+//     }
+
+//     fn optional_type_info(&mut self, resolve: &Resolve, ty: Option<&Type>) -> TypeInfo {
+//         match ty {
+//             Some(ty) => self.type_info(resolve, ty),
+//             None => TypeInfo::default(),
+//         }
+//     }
+// }
+
 pub trait WorldGenerator {
     fn generate(&mut self, resolve: &Resolve, id: WorldId, files: &mut Files) -> Result<()> {
+        // TODO: Should we refine this test to inspect only types reachable from
+        // the specified world?
+        if !cfg!(feature = "async")
+            && resolve.types.iter().any(|(_, ty)| {
+                matches!(
+                    ty.kind,
+                    TypeDefKind::Future(_) | TypeDefKind::Stream(_) | TypeDefKind::ErrorContext
+                )
+            })
+        {
+            anyhow::bail!(
+                "must enable `async` feature when using WIT files \
+                 containing future, stream, or error types"
+            );
+        }
+
         let world = &resolve.worlds[id];
         self.preprocess(resolve, id);
 
@@ -130,6 +364,8 @@ pub trait WorldGenerator {
         files: &mut Files,
     );
     fn finish(&mut self, resolve: &Resolve, world: WorldId, files: &mut Files) -> Result<()>;
+    // modify resolve by command line options
+    fn apply_resolve_options(&mut self, _resolve: &mut Resolve, _world: &mut WorldId) {}
 }
 
 /// This is a possible replacement for the `Generator` trait above, currently
@@ -233,5 +469,54 @@ pub fn dealias(resolve: &Resolve, mut id: TypeId) -> TypeId {
             TypeDefKind::Type(Type::Id(that_id)) => id = *that_id,
             _ => break id,
         }
+    }
+}
+
+fn hexdigit(v: u32) -> char {
+    if v < 10 {
+        char::from_u32(('0' as u32) + v).unwrap()
+    } else {
+        char::from_u32(('A' as u32) - 10 + v).unwrap()
+    }
+}
+
+/// encode symbol as alphanumeric by hex-encoding special characters
+pub fn make_external_component(input: &str) -> String {
+    input
+        .chars()
+        .map(|c| match c {
+            'A'..='Z' | 'a'..='z' | '0'..='9' | '_' => {
+                let mut s = String::new();
+                s.push(c);
+                s
+            }
+            '-' => {
+                let mut s = String::new();
+                s.push('_');
+                s
+            }
+            _ => {
+                let mut s = String::from("X");
+                s.push(hexdigit((c as u32 & 0xf0) >> 4));
+                s.push(hexdigit(c as u32 & 0xf));
+                s
+            }
+        })
+        .collect()
+}
+
+/// encode symbol as alphanumeric by hex-encoding special characters
+pub fn make_external_symbol(module_name: &str, name: &str, variant: abi::AbiVariant) -> String {
+    if module_name.is_empty() || module_name == "$root" {
+        make_external_component(name)
+    } else {
+        let mut res = make_external_component(module_name);
+        res.push_str(if matches!(variant, abi::AbiVariant::GuestExport) {
+            "X23" // Hash character
+        } else {
+            "X00" // NUL character (some tools use '.' for display)
+        });
+        res.push_str(&make_external_component(name));
+        res
     }
 }

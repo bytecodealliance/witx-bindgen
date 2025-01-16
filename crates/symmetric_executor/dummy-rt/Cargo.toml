@@ -1,0 +1,6 @@
+[package]
+name = "dummy-rt"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]

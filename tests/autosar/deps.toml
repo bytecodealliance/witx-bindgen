@@ -1,0 +1,4 @@
+# Use `wit-deps update` to pull in latest changes from "dynamic" branch references
+#poll = "https://github.com/WebAssembly/wasi-poll/archive/main.tar.gz"
+io = "https://github.com/WebAssembly/wasi-io/archive/main.tar.gz"
+cli = "https://github.com/WebAssembly/wasi-cli/archive/main.tar.gz"

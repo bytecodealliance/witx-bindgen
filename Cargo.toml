@@ -25,7 +25,7 @@ repository = "https://github.com/bytecodealliance/wasi-rs"
 [workspace.dependencies]
 anyhow = "1.0.72"
 bitflags = "2.3.3"
-heck = { version = "0.5" }
+heck =  { version = "0.5" }
 pulldown-cmark = { version = "0.9", default-features = false }
 clap = { version = "4.3.19", features = ["derive"] }
 indexmap = "2.0.0"
@@ -33,11 +33,11 @@ prettyplease = "0.2.20"
 syn = { version = "2.0.89", features = ["printing"] }
 futures = "0.3.31"
 
-wasmparser = "0.223.0"
-wasm-encoder = "0.223.0"
-wasm-metadata = "0.223.0"
-wit-parser = "0.223.0"
-wit-component = "0.223.0"
+wasmparser = { git = "https://github.com/cpetig/wasm-tools", branch = "symmetric" }
+wasm-encoder = { git = "https://github.com/cpetig/wasm-tools", branch = "symmetric" }
+wasm-metadata = { git = "https://github.com/cpetig/wasm-tools", branch = "symmetric" }
+wit-parser = { git = "https://github.com/cpetig/wasm-tools", branch = "symmetric" }
+wit-component = { git = "https://github.com/cpetig/wasm-tools", branch = "symmetric" }
 
 wit-bindgen-core = { path = 'crates/core', version = '0.37.0' }
 wit-bindgen-c = { path = 'crates/c', version = '0.37.0' }
@@ -48,6 +48,9 @@ wit-bindgen-csharp = { path = 'crates/csharp', version = '0.37.0' }
 wit-bindgen-markdown = { path = 'crates/markdown', version = '0.37.0' }
 wit-bindgen-moonbit = { path = 'crates/moonbit', version = '0.37.0' }
 wit-bindgen = { path = 'crates/guest-rust', version = '0.37.0', default-features = false }
+
+wit-bindgen-cpp = { path = 'crates/cpp', version = '0.3.0' }
+wit-bindgen-bridge = { path = 'crates/bridge', version = '0.1.0' }
 
 [[bin]]
 name = "wit-bindgen"
@@ -65,6 +68,8 @@ wit-bindgen-go = { workspace = true, features = ['clap'], optional = true }
 wit-bindgen-csharp = { workspace = true, features = ['clap'], optional = true }
 wit-component = { workspace = true }
 wasm-encoder = { workspace = true }
+wit-bindgen-cpp = { workspace = true, features = ['clap'], optional = true }
+wit-bindgen-bridge = { workspace = true, features = ['clap'], optional = true }
 
 [features]
 default = [
@@ -73,11 +78,15 @@ default = [
   'markdown',
   'teavm-java',
   'go',
-  'csharp',
+  # 'csharp',
+  'cpp',
+  'bridge',
   'moonbit',
   'async',
 ]
+bridge = ['dep:wit-bindgen-bridge']
 c = ['dep:wit-bindgen-c']
+cpp = ['dep:wit-bindgen-cpp']
 rust = ['dep:wit-bindgen-rust']
 markdown = ['dep:wit-bindgen-markdown']
 teavm-java = ['dep:wit-bindgen-teavm-java']
@@ -95,3 +104,15 @@ test-artifacts = { path = 'crates/test-rust-wasm/artifacts' }
 wit-parser = { workspace = true }
 wasmparser = { workspace = true }
 wasm-encoder = { workspace = true }
+
+#[patch.crates-io]
+#wit-parser = { git = "https://github.com/bytecodealliance/wasm-tools" }
+#wit-component = { git = "https://github.com/bytecodealliance/wasm-tools" }
+#wasm-encoder = { git = "https://github.com/bytecodealliance/wasm-tools" }
+#wasm-metadata = { git = "https://github.com/bytecodealliance/wasm-tools" }
+#wasmparser = { git = "https://github.com/bytecodealliance/wasm-tools" }
+#wasmprinter = { git = "https://github.com/bytecodealliance/wasm-tools" }
+
+#[patch."https://github.com/cpetig/wasm-tools"]
+#wit-parser = { path = "../wasm-tools/crates/wit-parser" }
+#wasmparser = { path = "../wasm-tools/crates/wasmparser" }
