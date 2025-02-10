@@ -105,7 +105,8 @@ impl CSProjectLLVMBuilder {
                 r#"<?xml version="1.0" encoding="utf-8"?>
             <configuration>
                 <config>
-                    <add key="globalPackagesFolder" value=".packages" />
+                    <!-- Store the packages where they can be shared between tests -->
+                    <add key="globalPackagesFolder" value="../../.packages" />
                 </config>
                 <packageSources>
                 <!--To inherit the global NuGet package sources remove the <clear/> line below -->
