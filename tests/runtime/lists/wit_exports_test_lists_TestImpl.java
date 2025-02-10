@@ -63,6 +63,10 @@ public class TestImpl {
         expect(a.get(1).f2 == 6);
     }
 
+    public static void listParamLarge(ArrayList<String> a) {
+        expect(a.size() == 1000);
+    }
+
     public static byte[] listResult() {
         return new byte[] { (byte) 1, (byte) 2, (byte) 3, (byte) 4, (byte) 5 };
     }

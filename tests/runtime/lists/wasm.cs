@@ -49,6 +49,13 @@ namespace ListsWorld {
                 }
             });
 
+            List<string> randomStrings = new List<string>();
+            for (int i = 0; i < 1000; i++)
+            {
+                randomStrings.Add(Guid.NewGuid().ToString());
+            }
+            TestInterop.ListParamLarge(randomStrings);
+
             {
                byte[] result = TestInterop.ListResult();
                Debug.Assert(result.Length == 5);
@@ -231,6 +238,11 @@ namespace ListsWorld.wit.exports.test.lists
             Debug.Assert(a[1].Item1 == 4);
             Debug.Assert(a[1].Item2 == 5);
             Debug.Assert(a[1].Item3 == 6);
+        }
+
+        public static void ListParamLarge(List<String> a)
+        {
+            Debug.Assert(a.Count() == 1000);
         }
 
         public static byte[] ListResult()

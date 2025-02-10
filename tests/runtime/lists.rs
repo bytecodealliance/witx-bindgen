@@ -51,6 +51,10 @@ impl test::lists::test::Host for MyImports {
         assert_eq!(ptr, [(1, 2, 3), (4, 5, 6)]);
     }
 
+    fn list_param_large(&mut self, ptr: Vec<String>) {
+        assert_eq!(ptr.len(), 1000);
+    }
+
     fn list_result(&mut self) -> Vec<u8> {
         vec![1, 2, 3, 4, 5]
     }
@@ -133,6 +137,8 @@ fn run_test(lists: Lists, store: &mut Store<crate::Wasi<MyImports>>) -> Result<(
             vec!["baz".to_owned()],
         ],
     )?;
+    let arg0: Vec<String> = (0..1000).map(|_| "string".to_string()).collect();
+    exports.call_list_param_large(&mut *store, &arg0)?;
     assert_eq!(exports.call_list_result(&mut *store)?, [1, 2, 3, 4, 5]);
     assert_eq!(exports.call_list_result2(&mut *store)?, "hello!");
     assert_eq!(

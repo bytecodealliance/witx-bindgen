@@ -29,6 +29,8 @@ impl Guest for Component {
             vec!["baz".to_owned()],
         ]);
         list_param5(&[(1, 2, 3), (4, 5, 6)]);
+        let large_list: Vec<String> = (0..1000).map(|_| "string".to_string()).collect();
+        list_param_large(&large_list);
         assert_eq!(list_result(), [1, 2, 3, 4, 5]);
         assert_eq!(list_result2(), "hello!");
         assert_eq!(list_result3(), ["hello,", "world!"]);
@@ -112,6 +114,10 @@ impl exports::test::lists::test::Guest for Component {
 
     fn list_param5(ptr: Vec<(u8, u32, u8)>) {
         assert_eq!(ptr, [(1, 2, 3), (4, 5, 6)]);
+    }
+
+    fn list_param_large(ptr: Vec<String>) {
+        assert_eq!(ptr.len(), 1000);
     }
 
     fn list_result() -> Vec<u8> {

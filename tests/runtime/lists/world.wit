@@ -11,6 +11,7 @@ interface test {
   list-param3: func(a: list<string>);
   list-param4: func(a: list<list<string>>);
   list-param5: func(a: list<tuple<u8, u32, u8>>);
+  list-param-large: func(a: list<string>);
   list-result: func() -> list<u8>;
   list-result2: func() -> string;
   list-result3: func() -> list<string>;

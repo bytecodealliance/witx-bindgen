@@ -315,6 +315,11 @@ void exports_test_lists_test_list_param4(lists_list_list_string_t *a) {
   lists_list_list_string_free(a);
 }
 
+void exports_test_lists_test_list_param_large(lists_list_string_t *a) {
+  assert(a->len == 1000);
+  lists_list_string_free(a);
+}
+
 void exports_test_lists_test_list_param5(lists_list_tuple3_u8_u32_u8_t *a) {
   assert(a->len == 2);
   assert(a->ptr[0].f0 == 1);

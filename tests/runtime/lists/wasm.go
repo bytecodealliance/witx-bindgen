@@ -2,6 +2,8 @@ package main
 
 import (
 	"math"
+	"math/rand"
+	"strconv"
 	. "wit_lists_go/gen"
 )
 
@@ -29,6 +31,12 @@ func (i ListImpl) TestImports() {
 	TestListsTestListParam2("foo")
 	TestListsTestListParam3([]string{"foo", "bar", "baz"})
 	TestListsTestListParam4([][]string{{"foo", "bar"}, {"baz"}})
+
+	randomStrings := make([]string, 1000)
+	for i := 0; i < 1000; i++ {
+		randomStrings[i] = "str" + strconv.Itoa(rand.Intn(1000))
+	}
+	TestListsTestListParamLarge(randomStrings)
 	res3 := TestListsTestListResult()
 	if len(res3) != 5 {
 		panic("TestListsTestListResult")
@@ -209,6 +217,12 @@ func (i ListImpl) ListParam5(a []ExportsTestListsTestTuple3U8U32U8T) {
 	}
 	if a[1].F0 != 4 || a[1].F1 != 5 || a[1].F2 != 6 {
 		panic("ListParam5")
+	}
+}
+
+func (i ListImpl) ListParamLarge(a []string) {
+	if len(a) != 1000 {
+		panic("ListParamLarge")
 	}
 }
 

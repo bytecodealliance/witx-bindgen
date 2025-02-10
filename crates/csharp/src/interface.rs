@@ -484,13 +484,37 @@ impl InterfaceGenerator<'_> {
             "#
         );
 
-        if !sig.results.is_empty() {
+        if abi::guest_export_needs_post_return(self.resolve, func) {
+            let params = sig
+                .results
+                .iter()
+                .enumerate()
+                .map(|(i, param)| {
+                    let ty = crate::world_generator::wasm_type(*param);
+                    format!("{ty} p{i}")
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
+
+            let mut bindgen = FunctionBindgen::new(
+                self,
+                "INVALID",
+                &func.kind,
+                (0..sig.results.len()).map(|i| format!("p{i}")).collect(),
+                Vec::new(),
+                ParameterType::ABI,
+            );
+
+            abi::post_return(bindgen.interface_gen.resolve, func, &mut bindgen, false);
+
+            let src = bindgen.src;
+
             uwrite!(
                 self.csharp_interop_src,
                 r#"
                 [UnmanagedCallersOnly(EntryPoint = "cabi_post_{export_name}")]
-                {access} static void cabi_post_{interop_name}({wasm_result_type} returnValue) {{
-                    Console.WriteLine("TODO: cabi_post_{export_name}");
+                {access} static unsafe void cabi_post_{interop_name}({params}) {{
+                    {src}
                 }}
                 "#
             );
