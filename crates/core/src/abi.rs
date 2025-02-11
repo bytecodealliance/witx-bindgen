@@ -1068,7 +1068,7 @@ impl<'a, B: Bindgen> Generator<'a, B> {
                         offset += self_.bindgen.sizes().size(ty);
                     }
                 };
-                
+
                 if !sig.indirect_params {
                     // If parameters are not passed indirectly then we lift each
                     // argument in succession from the component wasm types that
