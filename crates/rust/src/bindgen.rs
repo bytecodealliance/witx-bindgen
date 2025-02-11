@@ -24,7 +24,7 @@ pub(super) struct FunctionBindgen<'a, 'b> {
     emitted_cleanup: bool,
 }
 
-pub const POINTER_SIZE_EXPRESSION: &str = "core::mem::size_of::<*const u8>()";
+pub const POINTER_SIZE_EXPRESSION: &str = "::core::mem::size_of::<*const u8>()";
 
 impl<'a, 'b> FunctionBindgen<'a, 'b> {
     pub(super) fn new(
