@@ -560,11 +560,15 @@ pub mod vtable{ordinal} {{
                 fn wit_import(_: u32, _: *mut u8) -> u32;
             }}
 
-            unsafe {{ {async_support}::await_future_result(wit_import, future, address).await }}
+            match unsafe {{ {async_support}::await_future_result(wit_import, future, address).await }} {{
+                {async_support}::AsyncWaitResult::Values(_) => true,
+                {async_support}::AsyncWaitResult::End => false,
+                {async_support}::AsyncWaitResult::Error(_) => unreachable!("received error while performing write"),
+            }}
         }})
     }}
 
-    fn read(future: u32) -> ::core::pin::Pin<{box_}<dyn ::core::future::Future<Output = Option<{name}>>>> {{
+    fn read(future: u32) -> ::core::pin::Pin<{box_}<dyn ::core::future::Future<Output = ::std::option::Option<::std::result::Result<{name}, {async_support}::ErrorContext>>>>> {{
         {box_}::pin(async move {{
             struct Buffer([::core::mem::MaybeUninit::<u8>; {size}]);
             let mut buffer = Buffer([::core::mem::MaybeUninit::uninit(); {size}]);
@@ -582,11 +586,15 @@ pub mod vtable{ordinal} {{
                 fn wit_import(_: u32, _: *mut u8) -> u32;
             }}
 
-            if unsafe {{ {async_support}::await_future_result(wit_import, future, address).await }} {{
-                {lift}
-                Some(value)
-            }} else {{
-               None
+            match unsafe {{ {async_support}::await_future_result(wit_import, future, address).await }} {{
+                    {async_support}::AsyncWaitResult::Values(v) => {{
+                        {lift}
+                        Some(Ok(value))
+                    }},
+                    {async_support}::AsyncWaitResult::Error(e) => {{
+                        Some(Err({async_support}::ErrorContext::from_handle(e)))
+                    }},
+                    {async_support}::AsyncWaitResult::End => None,
             }}
         }})
     }}
@@ -625,7 +633,7 @@ pub mod vtable{ordinal} {{
         }}
     }}
 
-    fn close_writable(writer: u32) {{
+    fn close_writable(writer: u32, err_ctx: u32) {{
         #[cfg(not(target_arch = "wasm32"))]
         {{
             unreachable!();
@@ -638,7 +646,7 @@ pub mod vtable{ordinal} {{
                 #[link_name = "[future-close-writable-{index}]{func_name}"]
                 fn drop(_: u32, _: u32);
             }}
-            unsafe {{ drop(writer, 0) }}
+            unsafe {{ drop(writer, err_ctx) }}
         }}
     }}
 
@@ -790,26 +798,28 @@ pub mod vtable{ordinal} {{
 
             let mut total = 0;
             while total < values.len() {{
-                let count = unsafe {{
+
+                match unsafe {{
                     {async_support}::await_stream_result(
                         wit_import,
                         stream,
                         address.add(total * {size}),
                         u32::try_from(values.len() - (total * {size})).unwrap()
                     ).await
-                }};
-
-                if let Some(count) = count {{
-                    total += count;
-                }} else {{
-                    break
+                }} {{
+                    {async_support}::AsyncWaitResult::Values(count) => total += count,
+                    {async_support}::AsyncWaitResult::Error(_) => unreachable!("encountered error during write"),
+                    {async_support}::AsyncWaitResult::End => break,
                 }}
             }}
             total
         }})
     }}
 
-    fn read(stream: u32, values: &mut [::core::mem::MaybeUninit::<{name}>]) -> ::core::pin::Pin<{box_}<dyn ::core::future::Future<Output = Option<usize>> + '_>> {{
+    fn read(
+        stream: u32,
+        values: &mut [::core::mem::MaybeUninit::<{name}>]
+    ) -> ::core::pin::Pin<{box_}<dyn ::core::future::Future<Output = ::std::option::Option<::std::result::Result<usize, {async_support}::ErrorContext>>> + '_>> {{
         {box_}::pin(async move {{
             {lift_address}
 
@@ -825,19 +835,21 @@ pub mod vtable{ordinal} {{
                 fn wit_import(_: u32, _: *mut u8, _: u32) -> u32;
             }}
 
-            let count = unsafe {{
+            match unsafe {{
                 {async_support}::await_stream_result(
                     wit_import,
                     stream,
                     address,
                     u32::try_from(values.len()).unwrap()
                 ).await
-            }};
-            #[allow(unused)]
-            if let Some(count) = count {{
-                {lift}
+            }} {{
+                {async_support}::AsyncWaitResult::Values(count) => {{
+                    {lift}
+                    Some(Ok(count))
+                }},
+                {async_support}::AsyncWaitResult::Error(e) => Some(Err({async_support}::ErrorContext::from_handle(e))),
+                {async_support}::AsyncWaitResult::End => None,
             }}
-            count
         }})
     }}
 
@@ -875,7 +887,7 @@ pub mod vtable{ordinal} {{
         }}
     }}
 
-    fn close_writable(writer: u32) {{
+    fn close_writable(writer: u32, err_ctx: u32) {{
         #[cfg(not(target_arch = "wasm32"))]
         {{
             unreachable!();
@@ -888,7 +900,7 @@ pub mod vtable{ordinal} {{
                 #[link_name = "[stream-close-writable-{index}]{func_name}"]
                 fn drop(_: u32, _: u32);
             }}
-            unsafe {{ drop(writer, 0) }}
+            unsafe {{ drop(writer, err_ctx) }}
         }}
     }}
 

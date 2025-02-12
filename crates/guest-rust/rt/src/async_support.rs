@@ -53,6 +53,9 @@ pub enum Handle {
     LocalClosed,
     Read,
     Write,
+    // Local end is closed with an error
+    // NOTE: this is only valid for write ends
+    WriteClosedErr(Option<ErrorContext>),
 }
 
 /// The current task being polled (or null if none).
@@ -176,7 +179,7 @@ pub async unsafe fn await_result(
         STATUS_RETURNED | STATUS_DONE => {
             alloc::dealloc(params, params_layout);
         }
-        _ => unreachable!(),
+        _ => unreachable!("unrecognized async call status"),
     }
 }
 
@@ -187,13 +190,40 @@ mod results {
     pub const CANCELED: u32 = 0;
 }
 
+/// Result of awaiting a asynchronous read or write
+#[doc(hidden)]
+pub enum AsyncWaitResult {
+    /// Used when a value was successfully sent or received
+    Values(usize),
+    /// Represents a successful but error-indicating read
+    Error(u32),
+    /// Represents a failed read (closed, canceled, etc)
+    End,
+}
+
+impl AsyncWaitResult {
+    /// Interpret the results from an async operation that is known to *not* be blocked
+    fn from_nonblocked_async_result(v: u32) -> Self {
+        match v {
+            results::CLOSED | results::CANCELED => Self::End,
+            v => {
+                if v & results::CLOSED != 0 {
+                    Self::Error(v & !results::CLOSED)
+                } else {
+                    Self::Values(v as usize)
+                }
+            }
+        }
+    }
+}
+
 /// Await the completion of a future read or write.
 #[doc(hidden)]
 pub async unsafe fn await_future_result(
     import: unsafe extern "C" fn(u32, *mut u8) -> u32,
     future: u32,
     address: *mut u8,
-) -> bool {
+) -> AsyncWaitResult {
     let result = import(future, address);
     match result {
         results::BLOCKED => {
@@ -201,12 +231,9 @@ pub async unsafe fn await_future_result(
             (*CURRENT).todo += 1;
             let (tx, rx) = oneshot::channel();
             CALLS.insert(future as _, tx);
-            let v = rx.await.unwrap();
-            v == 1
+            AsyncWaitResult::from_nonblocked_async_result(rx.await.unwrap())
         }
-        results::CLOSED | results::CANCELED => false,
-        1 => true,
-        _ => unreachable!(),
+        v => AsyncWaitResult::from_nonblocked_async_result(v),
     }
 }
 
@@ -217,7 +244,7 @@ pub async unsafe fn await_stream_result(
     stream: u32,
     address: *mut u8,
     count: u32,
-) -> Option<usize> {
+) -> AsyncWaitResult {
     let result = import(stream, address, count);
     match result {
         results::BLOCKED => {
@@ -227,13 +254,12 @@ pub async unsafe fn await_stream_result(
             CALLS.insert(stream as _, tx);
             let v = rx.await.unwrap();
             if let results::CLOSED | results::CANCELED = v {
-                None
+                AsyncWaitResult::End
             } else {
-                Some(usize::try_from(v).unwrap())
+                AsyncWaitResult::Values(usize::try_from(v).unwrap())
             }
         }
-        results::CLOSED | results::CANCELED => None,
-        v => Some(usize::try_from(v).unwrap()),
+        v => AsyncWaitResult::from_nonblocked_async_result(v),
     }
 }
 
@@ -310,6 +336,7 @@ pub unsafe fn callback(ctx: *mut u8, event0: i32, event1: i32, event2: i32) -> i
 }
 
 /// Represents the Component Model `error-context` type.
+#[derive(PartialEq, Eq)]
 pub struct ErrorContext {
     handle: u32,
 }

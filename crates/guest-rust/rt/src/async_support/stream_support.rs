@@ -1,6 +1,7 @@
 extern crate std;
 
 use {
+    super::ErrorContext,
     super::Handle,
     futures::{
         channel::oneshot,
@@ -33,10 +34,10 @@ pub struct StreamVtable<T> {
     pub read: fn(
         future: u32,
         values: &mut [MaybeUninit<T>],
-    ) -> Pin<Box<dyn Future<Output = Option<usize>> + '_>>,
+    ) -> Pin<Box<dyn Future<Output = Option<Result<usize, ErrorContext>>> + '_>>,
     pub cancel_write: fn(future: u32),
     pub cancel_read: fn(future: u32),
-    pub close_writable: fn(future: u32),
+    pub close_writable: fn(future: u32, err_ctx: u32),
     pub close_readable: fn(future: u32),
 }
 
@@ -54,7 +55,8 @@ impl<T> Drop for CancelWriteOnDrop<T> {
                     Handle::LocalOpen
                     | Handle::LocalWaiting(_)
                     | Handle::Read
-                    | Handle::LocalClosed => unreachable!(),
+                    | Handle::LocalClosed
+                    | Handle::WriteClosedErr(_) => unreachable!(),
                     Handle::LocalReady(..) => {
                         entry.insert(Handle::LocalOpen);
                     }
@@ -88,6 +90,22 @@ impl<T> StreamWriter<T> {
     pub fn cancel(&mut self) {
         assert!(self.future.is_some());
         self.future = None;
+    }
+
+    /// Close the writer with an error that will be returned as the last value
+    ///
+    /// Note that this error is not sent immediately, but only when the
+    /// writer closes, which is normally a result of a `drop()`
+    pub fn close_with_error(self, err: ErrorContext) {
+        super::with_entry(self.handle, move |entry| match entry {
+            Entry::Vacant(_) => unreachable!(),
+            Entry::Occupied(mut entry) => match entry.get_mut() {
+                _ => {
+                    // Note: the impending drop after this function runs should trigger
+                    entry.insert(Handle::WriteClosedErr(Some(err)));
+                }
+            },
+        });
     }
 }
 
@@ -147,7 +165,7 @@ impl<T> Sink<Vec<T>> for StreamWriter<T> {
                                     }
                                 }
                                 Handle::LocalReady(..) => Poll::Pending,
-                                Handle::LocalClosed => {
+                                Handle::LocalClosed | Handle::WriteClosedErr(_) => {
                                     cancel_on_drop.take().unwrap().handle = None;
                                     Poll::Ready(())
                                 }
@@ -164,7 +182,7 @@ impl<T> Sink<Vec<T>> for StreamWriter<T> {
                     };
                     _ = tx.send(Box::new(item));
                 }
-                Handle::LocalClosed => (),
+                Handle::LocalClosed | Handle::WriteClosedErr(_) => (),
                 Handle::Read | Handle::LocalReady(..) => unreachable!(),
                 Handle::Write => {
                     let handle = self.handle;
@@ -206,7 +224,12 @@ impl<T> Drop for StreamWriter<T> {
                 Handle::Read => unreachable!(),
                 Handle::Write | Handle::LocalClosed => {
                     entry.remove();
-                    (self.vtable.close_writable)(self.handle);
+                    (self.vtable.close_writable)(self.handle, 0);
+                }
+                Handle::WriteClosedErr(err) => {
+                    let err_ctx = err.take().as_ref().map(ErrorContext::handle).unwrap_or(0);
+                    entry.remove();
+                    (self.vtable.close_writable)(self.handle, err_ctx);
                 }
             },
         });
@@ -227,7 +250,8 @@ impl<T> Drop for CancelReadOnDrop<T> {
                     Handle::LocalOpen
                     | Handle::LocalReady(..)
                     | Handle::Write
-                    | Handle::LocalClosed => unreachable!(),
+                    | Handle::LocalClosed
+                    | Handle::WriteClosedErr(_) => unreachable!(),
                     Handle::LocalWaiting(_) => {
                         entry.insert(Handle::LocalOpen);
                     }
@@ -241,7 +265,7 @@ impl<T> Drop for CancelReadOnDrop<T> {
 /// Represents the readable end of a Component Model `stream`.
 pub struct StreamReader<T: 'static> {
     handle: AtomicU32,
-    future: Option<Pin<Box<dyn Future<Output = Option<Vec<T>>> + 'static>>>,
+    future: Option<Pin<Box<dyn Future<Output = Option<Result<Vec<T>, ErrorContext>>> + 'static>>>,
     vtable: &'static StreamVtable<T>,
 }
 
@@ -287,7 +311,8 @@ impl<T> StreamReader<T> {
                 | Handle::LocalOpen
                 | Handle::LocalReady(..)
                 | Handle::LocalWaiting(_)
-                | Handle::LocalClosed => {
+                | Handle::LocalClosed
+                | Handle::WriteClosedErr(_) => {
                     unreachable!()
                 }
             },
@@ -312,7 +337,10 @@ impl<T> StreamReader<T> {
                 Handle::Read | Handle::LocalClosed => {
                     entry.remove();
                 }
-                Handle::LocalReady(..) | Handle::LocalWaiting(_) | Handle::Write => unreachable!(),
+                Handle::LocalReady(..)
+                | Handle::LocalWaiting(_)
+                | Handle::Write
+                | Handle::WriteClosedErr(_) => unreachable!(),
             },
         });
 
@@ -321,7 +349,7 @@ impl<T> StreamReader<T> {
 }
 
 impl<T> Stream for StreamReader<T> {
-    type Item = Vec<T>;
+    type Item = Result<Vec<T>, ErrorContext>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
         let me = self.get_mut();
@@ -331,8 +359,10 @@ impl<T> Stream for StreamReader<T> {
                 me.handle.load(Relaxed),
                 |entry| match entry {
                     Entry::Vacant(_) => unreachable!(),
-                    Entry::Occupied(mut entry) => match entry.get() {
-                        Handle::Write | Handle::LocalWaiting(_) => unreachable!(),
+                    Entry::Occupied(mut entry) => match entry.get_mut() {
+                        Handle::Write | Handle::LocalWaiting(_) => {
+                            unreachable!()
+                        }
                         Handle::Read => {
                             let handle = me.handle.load(Relaxed);
                             let vtable = me.vtable;
@@ -345,15 +375,16 @@ impl<T> Stream for StreamReader<T> {
                                     .take(ceiling(64 * 1024, mem::size_of::<T>().max(1)))
                                     .collect::<Vec<_>>();
 
-                                let result =
-                                    if let Some(count) = (vtable.read)(handle, &mut buffer).await {
+                                let result = match (vtable.read)(handle, &mut buffer).await {
+                                    Some(Ok(count)) => {
                                         buffer.truncate(count);
-                                        Some(unsafe {
+                                        Some(Ok(unsafe {
                                             mem::transmute::<Vec<MaybeUninit<T>>, Vec<T>>(buffer)
-                                        })
-                                    } else {
-                                        None
-                                    };
+                                        }))
+                                    }
+                                    Some(Err(err)) => Some(Err(err)),
+                                    None => None,
+                                };
                                 cancel_on_drop.handle = None;
                                 drop(cancel_on_drop);
                                 result
@@ -375,6 +406,10 @@ impl<T> Stream for StreamReader<T> {
                             })
                         }
                         Handle::LocalClosed => Box::pin(future::ready(None)),
+                        Handle::WriteClosedErr(err_ctx) => match err_ctx.take() {
+                            None => Box::pin(future::ready(None)),
+                            Some(err_ctx) => Box::pin(future::ready(Some(Err(err_ctx)))),
+                        },
                         Handle::LocalReady(..) => {
                             let Handle::LocalReady(v, waker) = entry.insert(Handle::LocalOpen)
                             else {
@@ -422,7 +457,7 @@ impl<T> Drop for StreamReader<T> {
                             entry.remove();
                             (self.vtable.close_readable)(handle);
                         }
-                        Handle::Write => unreachable!(),
+                        Handle::Write | Handle::WriteClosedErr(_) => unreachable!(),
                     },
                 });
             }

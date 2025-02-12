@@ -1,6 +1,7 @@
 extern crate std;
 
 use {
+    super::ErrorContext,
     super::Handle,
     futures::{
         channel::oneshot,
@@ -20,10 +21,10 @@ use {
 #[doc(hidden)]
 pub struct FutureVtable<T> {
     pub write: fn(future: u32, value: T) -> Pin<Box<dyn Future<Output = bool>>>,
-    pub read: fn(future: u32) -> Pin<Box<dyn Future<Output = Option<T>>>>,
+    pub read: fn(future: u32) -> Pin<Box<dyn Future<Output = Option<Result<T, ErrorContext>>>>>,
     pub cancel_write: fn(future: u32),
     pub cancel_read: fn(future: u32),
-    pub close_writable: fn(future: u32),
+    pub close_writable: fn(future: u32, err_ctx: u32),
     pub close_readable: fn(future: u32),
 }
 
@@ -78,7 +79,8 @@ impl<T> CancelableWrite<T> {
                 Handle::LocalOpen
                 | Handle::LocalWaiting(_)
                 | Handle::Read
-                | Handle::LocalClosed => unreachable!(),
+                | Handle::LocalClosed
+                | Handle::WriteClosedErr(_) => unreachable!(),
                 Handle::LocalReady(..) => {
                     entry.insert(Handle::LocalOpen);
                 }
@@ -126,7 +128,9 @@ impl<T> FutureWriter<T> {
                                         Poll::Pending
                                     }
                                     Handle::LocalReady(..) => Poll::Pending,
-                                    Handle::LocalClosed => Poll::Ready(()),
+                                    Handle::LocalClosed | Handle::WriteClosedErr(_) => {
+                                        Poll::Ready(())
+                                    }
                                     Handle::LocalWaiting(_) | Handle::Read | Handle::Write => {
                                         unreachable!()
                                     }
@@ -141,12 +145,28 @@ impl<T> FutureWriter<T> {
                         _ = tx.send(Box::new(v));
                         Box::pin(future::ready(()))
                     }
-                    Handle::LocalClosed => Box::pin(future::ready(())),
+                    Handle::LocalClosed | Handle::WriteClosedErr(_) => Box::pin(future::ready(())),
                     Handle::Read | Handle::LocalReady(..) => unreachable!(),
                     Handle::Write => Box::pin((vtable.write)(handle, v).map(drop)),
                 },
             }),
         }
+    }
+
+    /// Close the writer with an error that will be returned as the last value
+    ///
+    /// Note that this error is not sent immediately, but only when the
+    /// writer closes, which is normally a result of a `drop()`
+    pub fn close_with_error(&mut self, err: ErrorContext) {
+        super::with_entry(self.handle, move |entry| match entry {
+            Entry::Vacant(_) => unreachable!(),
+            Entry::Occupied(mut entry) => match entry.get_mut() {
+                // Regardless of current state, put the writer into a closed with error state
+                _ => {
+                    entry.insert(Handle::WriteClosedErr(Some(err)));
+                }
+            },
+        });
     }
 }
 
@@ -161,7 +181,18 @@ impl<T> Drop for FutureWriter<T> {
                 Handle::Read => unreachable!(),
                 Handle::Write | Handle::LocalClosed => {
                     entry.remove();
-                    (self.vtable.close_writable)(self.handle);
+                    (self.vtable.close_writable)(self.handle, 0);
+                }
+                Handle::WriteClosedErr(_) => {
+                    match entry.remove() {
+                        Handle::WriteClosedErr(None) => {
+                            (self.vtable.close_writable)(self.handle, 0);
+                        }
+                        Handle::WriteClosedErr(Some(err_ctx)) => {
+                            (self.vtable.close_writable)(self.handle, err_ctx.handle());
+                        }
+                        _ => unreachable!(),
+                    }
                 }
             },
         });
@@ -171,13 +202,13 @@ impl<T> Drop for FutureWriter<T> {
 /// Represents a read operation which may be canceled prior to completion.
 pub struct CancelableRead<T: 'static> {
     reader: Option<FutureReader<T>>,
-    future: Pin<Box<dyn Future<Output = Option<T>>>>,
+    future: Pin<Box<dyn Future<Output = Option<Result<T, ErrorContext>>>>>,
 }
 
 impl<T> Future for CancelableRead<T> {
-    type Output = Option<T>;
+    type Output = Option<Result<T, ErrorContext>>;
 
-    fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<T>> {
+    fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Result<T, ErrorContext>>> {
         let me = self.get_mut();
         match me.future.poll_unpin(cx) {
             Poll::Ready(v) => {
@@ -206,7 +237,8 @@ impl<T> CancelableRead<T> {
                 Handle::LocalOpen
                 | Handle::LocalReady(..)
                 | Handle::Write
-                | Handle::LocalClosed => unreachable!(),
+                | Handle::LocalClosed
+                | Handle::WriteClosedErr(_) => unreachable!(),
                 Handle::LocalWaiting(_) => {
                     entry.insert(Handle::LocalOpen);
                 }
@@ -262,7 +294,8 @@ impl<T> FutureReader<T> {
                 | Handle::LocalOpen
                 | Handle::LocalReady(..)
                 | Handle::LocalWaiting(_)
-                | Handle::LocalClosed => {
+                | Handle::LocalClosed
+                | Handle::WriteClosedErr(_) => {
                     unreachable!()
                 }
             },
@@ -286,7 +319,10 @@ impl<T> FutureReader<T> {
                 Handle::Read | Handle::LocalClosed => {
                     entry.remove();
                 }
-                Handle::LocalReady(..) | Handle::LocalWaiting(_) | Handle::Write => unreachable!(),
+                Handle::LocalReady(..)
+                | Handle::LocalWaiting(_)
+                | Handle::Write
+                | Handle::WriteClosedErr(_) => unreachable!(),
             },
         });
 
@@ -295,7 +331,7 @@ impl<T> FutureReader<T> {
 }
 
 impl<T> IntoFuture for FutureReader<T> {
-    type Output = Option<T>;
+    type Output = Option<Result<T, ErrorContext>>;
     type IntoFuture = CancelableRead<T>;
 
     /// Convert this object into a `Future` which will resolve when a value is
@@ -308,8 +344,10 @@ impl<T> IntoFuture for FutureReader<T> {
             reader: Some(self),
             future: super::with_entry(handle, |entry| match entry {
                 Entry::Vacant(_) => unreachable!(),
-                Entry::Occupied(mut entry) => match entry.get() {
-                    Handle::Write | Handle::LocalWaiting(_) => unreachable!(),
+                Entry::Occupied(mut entry) => match entry.get_mut() {
+                    Handle::Write | Handle::LocalWaiting(_) => {
+                        unreachable!()
+                    }
                     Handle::Read => Box::pin(async move { (vtable.read)(handle).await })
                         as Pin<Box<dyn Future<Output = _>>>,
                     Handle::LocalOpen => {
@@ -318,6 +356,10 @@ impl<T> IntoFuture for FutureReader<T> {
                         Box::pin(async move { rx.await.ok().map(|v| *v.downcast().unwrap()) })
                     }
                     Handle::LocalClosed => Box::pin(future::ready(None)),
+                    Handle::WriteClosedErr(err_ctx) => match err_ctx.take() {
+                        None => Box::pin(future::ready(None)),
+                        Some(err_ctx) => Box::pin(future::ready(Some(Err(err_ctx)))),
+                    },
                     Handle::LocalReady(..) => {
                         let Handle::LocalReady(v, waker) = entry.insert(Handle::LocalClosed) else {
                             unreachable!()
@@ -353,7 +395,7 @@ impl<T> Drop for FutureReader<T> {
                             entry.remove();
                             (self.vtable.close_readable)(handle);
                         }
-                        Handle::Write => unreachable!(),
+                        Handle::Write | Handle::WriteClosedErr(_) => unreachable!(),
                     },
                 });
             }
